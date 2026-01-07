@@ -106,15 +106,71 @@
 
       const listEl = document.getElementById('gift-list');
 
-      // Load selections from Supabase
+      // Seed SQL (for copying) -------------------------------------------------
+      const SEED_SQL = `create table if not exists public.gifts (
+  id integer primary key,
+  name text not null,
+  reserved_by text
+);
+
+insert into public.gifts (id, name, reserved_by) values
+(0,'Kávovar', NULL),
+(1,'Sada kuchyňského nádobí', NULL),
+(2,'Prostěradla a polštáře', NULL),
+(3,'Digitální fotorámeček', NULL),
+(4,'Dárkový poukaz na večeři', NULL),
+(5,'Sada nožů', NULL),
+(6,'Vínová kolekce', NULL),
+(7,'Přenosný reproduktor', NULL),
+(8,'Zahradní sada', NULL),
+(9,'Dekorační svíčky', NULL),
+(10,'Sada pečicího náčiní', NULL),
+(11,'Poukaz na wellness', NULL);`;
+
+      let tableMissing = false; // true if select returns table-missing error
+
+      // Load selections from Supabase (detect missing table)
       async function loadSelections(){
         try{
           const { data, error } = await supabase.from('gifts').select('id,reserved_by')
-          if(error){ console.error(error); return {}; }
+          if(error){
+            // detect common Supabase errors when table doesn't exist
+            const msg = (error && error.message) ? error.message : String(error);
+            if(msg.includes("Could not find the table") || msg.includes("does not exist") || msg.includes('relation "gifts"')){
+              tableMissing = true;
+              return {};
+            }
+            console.error(error);
+            return {};
+          }
+          tableMissing = false;
           const map = {};
           data.forEach(d => map[d.id] = d.reserved_by);
           return map;
         }catch(e){ console.error(e); return {}; }
+      }
+
+      // Try to run client-side seed (will fail if table really doesn't exist)
+      async function trySeedFromClient(){
+        const rows = gifts.map((name,i)=>({id:i,name,reserved_by:null}));
+        try{
+          const { data, error } = await supabase.from('gifts').insert(rows);
+          if(error) throw error;
+          alert('Tabulka byla naplněna daty.');
+          tableMissing = false;
+          await render();
+        }catch(err){
+          alert('Seed selhal. Otevři Supabase SQL editor a spusť seed SQL (see message).');
+          console.error(err);
+        }
+      }
+
+      function copySeedToClipboard(){
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(SEED_SQL).then(()=>alert('SQL zkopírováno do schránky.'))
+        } else {
+          alert('Prokopíruj SQL ručně: otevři scripts/seed.sql v repozitáři.');
+        }
       }
 
       async function reserveRemote(id, name){
@@ -152,6 +208,28 @@
       async function render(){
         const selections = await loadSelections();
         listEl.innerHTML = '';
+
+        // If table is missing, show instructions and seed options
+        if(tableMissing){
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div style="padding:6px 0">
+              <h3 style="margin:0 0 8px 0;">Chybí tabulka <code>public.gifts</code></h3>
+              <p class="reserved">Spusť následující SQL v Supabase Console → SQL (New query) a poté znovu načti stránku.</p>
+              <pre style="white-space:pre-wrap;background:#f8f6f3;border:1px solid var(--border);padding:12px;border-radius:8px;margin-top:8px;">${escapeHtml(SEED_SQL)}</pre>
+              <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" id="copy-sql">Kopírovat SQL</button>
+                <button class="btn" id="try-seed">Zkusit seed z prohlížeče</button>
+                <a class="btn" href="https://app.supabase.com/project/${SUPABASE_URL.replace('https://','')}/sql" target="_blank">Otevřít Supabase</a>
+              </div>
+            </div>
+          `;
+          listEl.appendChild(card);
+          document.getElementById('copy-sql').addEventListener('click', copySeedToClipboard);
+          document.getElementById('try-seed').addEventListener('click', trySeedFromClient);
+          return;
+        }
 
         gifts.forEach((gift, i) => {
           const li = document.createElement('li');
