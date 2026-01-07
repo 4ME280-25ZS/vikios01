@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wedding Wishlist</title>
+  <style>
+    :root{
+      --bg: #f7f3ef; /* soft beige */
+      --card: #ffffff;
+      --muted: #7a7a7a; /* gray */
+      --brown: #7b5a45; /* brown */
+      --accent: #d9c9b2; /* light beige */
+      --border: #ebe3d8;
+      --shadow: rgba(16,12,8,0.06);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background: linear-gradient(180deg,var(--bg),#fff);
+      color:var(--brown);
+      -webkit-font-smoothing:antialiased;
+    }
+
+    header.site-header{
+      max-width:1200px;margin:0 auto;padding:56px 20px 12px;text-align:center
+    }
+    h1.title{font-family: 'Georgia', 'Times New Roman', serif;margin:0;font-size:40px;letter-spacing:0.4px}
+    p.subtitle{margin:10px auto 0;color:var(--muted);max-width:880px;font-size:16px}
+
+    .container{max-width:1400px;margin:28px auto;padding:0 20px 60px}
+    .gifts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;list-style:none;padding:0;margin:0}
+
+    .card{
+      background:var(--card);
+      border-radius:14px;
+      padding:16px;
+      border:1px solid var(--border);
+      box-shadow:0 8px 20px var(--shadow);
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      min-height:0;
+      transition:transform .14s ease,box-shadow .14s ease;
+      word-wrap:break-word;
+    }
+    .card:hover{transform:translateY(-6px);box-shadow:0 18px 42px rgba(16,12,8,0.08)}
+
+    .meta{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+    .gift-name{font-weight:700;font-size:16px;color:var(--brown);overflow-wrap:break-word;word-wrap:break-word;word-break:break-word;white-space:normal}
+    .reserved{font-size:13px;color:var(--muted);margin-top:8px;font-style:italic;white-space:normal;overflow-wrap:break-word} 
+
+    .actions{display:flex;align-items:center;gap:8px;margin-top:12px}
+    .btn{appearance:none;border:1px solid var(--accent);background:transparent;color:var(--brown);padding:8px 14px;border-radius:999px;font-weight:700;cursor:pointer;transition:background .12s ease,transform .12s ease}
+    .btn:hover{background:var(--accent);color:#fff;transform:translateY(-1px)}
+    .btn[disabled]{background:#f3f3f3;border-color:#edebe6;color:var(--muted);cursor:not-allowed;transform:none}
+
+    /* secondary cancel button */
+    .btn-secondary{appearance:none;border:0;background:transparent;color:var(--brown);padding:6px 10px;border-radius:10px;font-weight:700;cursor:pointer;transition:color .12s ease}
+    .btn-secondary:hover{color:var(--accent-dark);text-decoration:underline}
+    .btn-secondary[disabled]{color:var(--muted);cursor:not-allowed} 
+
+    .note{margin-top:22px;color:var(--muted);text-align:center}
+
+    @media (max-width:720px){h1.title{font-size:28px}.subtitle{font-size:14px}.container{padding:0 14px 40px}}
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <h1 class="title">Svatební wishlist</h1>
+    <p class="subtitle">Vyber si dárek a zarezervuj si ho, aby všichni věděli, že už ho sháníš ty.</p>
+  </header>
+
+  <main class="container" role="main">
+    <ul id="gift-list" class="gifts" aria-live="polite" aria-label="Seznam dárků"></ul>
+
+    <div class="note">Děkujeme a těšíme se na vás!</div>
+  </main>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    (function(){
+      // Supabase config (from your project)
+      const SUPABASE_URL = 'https://bnhuqnkmtuxgnkejrcpn.supabase.co'
+      const SUPABASE_KEY = 'sb_publishable_1KNdnxdVt7f8rtkamlxEww_d4SQUS69'
+      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+      // Example gift list — modify as needed
+      const gifts = [
+        'Kávovar',
+        'Sada kuchyňského nádobí',
+        'Prostěradla a polštáře',
+        'Digitální fotorámeček',
+        'Dárkový poukaz na večeři',
+        'Sada nožů',
+        'Vínová kolekce',
+        'Přenosný reproduktor',
+        'Zahradní sada',
+        'Dekorační svíčky',
+        'Sada pečicího náčiní',
+        'Poukaz na wellness'
+      ];
+
+      const listEl = document.getElementById('gift-list');
+
+      // Seed SQL (for copying) -------------------------------------------------
+      const SEED_SQL = `create table if not exists public.gifts (
+  id integer primary key,
+  name text not null,
+  reserved_by text
+);
+
+insert into public.gifts (id, name, reserved_by) values
+(0,'Kávovar', NULL),
+(1,'Sada kuchyňského nádobí', NULL),
+(2,'Prostěradla a polštáře', NULL),
+(3,'Digitální fotorámeček', NULL),
+(4,'Dárkový poukaz na večeři', NULL),
+(5,'Sada nožů', NULL),
+(6,'Vínová kolekce', NULL),
+(7,'Přenosný reproduktor', NULL),
+(8,'Zahradní sada', NULL),
+(9,'Dekorační svíčky', NULL),
+(10,'Sada pečicího náčiní', NULL),
+(11,'Poukaz na wellness', NULL);`;
+
+      let tableMissing = false; // true if select returns table-missing error
+
+      // Load selections from Supabase (detect missing table)
+      async function loadSelections(){
+        try{
+          const { data, error } = await supabase.from('gifts').select('id,reserved_by')
+          if(error){
+            // detect common Supabase errors when table doesn't exist
+            const msg = (error && error.message) ? error.message : String(error);
+            if(msg.includes("Could not find the table") || msg.includes("does not exist") || msg.includes('relation "gifts"')){
+              tableMissing = true;
+              return {};
+            }
+            console.error(error);
+            return {};
+          }
+          tableMissing = false;
+          const map = {};
+          data.forEach(d => map[d.id] = d.reserved_by);
+          return map;
+        }catch(e){ console.error(e); return {}; }
+      }
+
+      // Try to run client-side seed (will fail if table really doesn't exist)
+      async function trySeedFromClient(){
+        const rows = gifts.map((name,i)=>({id:i,name,reserved_by:null}));
+        try{
+          const { data, error } = await supabase.from('gifts').insert(rows);
+          if(error) throw error;
+          alert('Tabulka byla naplněna daty.');
+          tableMissing = false;
+          await render();
+        }catch(err){
+          alert('Seed selhal. Otevři Supabase SQL editor a spusť seed SQL (see message).');
+          console.error(err);
+        }
+      }
+
+      function copySeedToClipboard(){
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(SEED_SQL).then(()=>alert('SQL zkopírováno do schránky.'))
+        } else {
+          alert('Prokopíruj SQL ručně: otevři scripts/seed.sql v repozitáři.');
+        }
+      }
+
+      async function reserveRemote(id, name){
+        const { data, error } = await supabase
+          .from('gifts')
+          .update({ reserved_by: name })
+          .eq('id', Number(id))
+          .is('reserved_by', null)
+          .select();
+        if(error) throw error;
+        if(!data || data.length === 0) throw new Error('Tento dárek už je rezervovaný');
+        return data[0];
+      }
+
+      async function cancelRemote(id){
+        const { error } = await supabase
+          .from('gifts')
+          .update({ reserved_by: null })
+          .eq('id', Number(id));
+        if(error) throw error;
+      }
+
+      // Realtime subscription to keep UI in sync
+      try{
+        supabase
+          .channel('public:gifts')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'gifts' }, () => {
+            render();
+          })
+          .subscribe();
+      } catch(e){ /* ignore if realtime not available */ }
+
+      function escapeHtml(str){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s] || s); }
+
+      async function render(){
+        const selections = await loadSelections();
+        listEl.innerHTML = '';
+
+        // If table is missing, show instructions and seed options
+        if(tableMissing){
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div style="padding:6px 0">
+              <h3 style="margin:0 0 8px 0;">Chybí tabulka <code>public.gifts</code></h3>
+              <p class="reserved">Spusť následující SQL v Supabase Console → SQL (New query) a poté znovu načti stránku.</p>
+              <pre style="white-space:pre-wrap;background:#f8f6f3;border:1px solid var(--border);padding:12px;border-radius:8px;margin-top:8px;">${escapeHtml(SEED_SQL)}</pre>
+              <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" id="copy-sql">Kopírovat SQL</button>
+                <button class="btn" id="try-seed">Zkusit seed z prohlížeče</button>
+                <a class="btn" href="https://app.supabase.com/project/${SUPABASE_URL.replace('https://','')}/sql" target="_blank">Otevřít Supabase</a>
+              </div>
+            </div>
+          `;
+          listEl.appendChild(card);
+          document.getElementById('copy-sql').addEventListener('click', copySeedToClipboard);
+          document.getElementById('try-seed').addEventListener('click', trySeedFromClient);
+          return;
+        }
+
+        gifts.forEach((gift, i) => {
+          const li = document.createElement('li');
+          li.className = 'card';
+
+          const buyerText = selections[i] ? escapeHtml(selections[i]) : '';
+
+          li.innerHTML = `
+            <div>
+              <div class="meta">
+                <div class="gift-name">${escapeHtml(gift)}</div>
+                <div style="font-size:13px;color:var(--muted);">#${i+1}</div>
+              </div>
+              <div class="reserved">${buyerText ? 'Rezervováno: ' + buyerText : ''}</div>
+            </div>
+            <div class="actions">
+              <button class="btn" data-action="reserve" data-index="${i}" ${buyerText ? 'hidden' : ''}>Rezervovat</button>
+              <button class="btn btn-secondary" data-action="cancel" data-index="${i}" ${buyerText ? '' : 'hidden'}>Zrušit rezervaci</button>
+            </div>
+          `;
+
+          listEl.appendChild(li);
+        });
+
+        listEl.querySelectorAll('button[data-action="reserve"]').forEach(btn => btn.addEventListener('click', onReserve));
+        listEl.querySelectorAll('button[data-action="cancel"]').forEach(btn => btn.addEventListener('click', onCancel));
+      }
+
+      async function onReserve(e){
+        const idx = e.currentTarget.getAttribute('data-index');
+        const raw = prompt('Zadejte své jméno pro rezervaci dárku');
+        if(raw === null) return;
+        const name = raw.trim();
+        if(!name){ alert('Jméno je povinné pro rezervaci.'); return; }
+
+        try{
+          await reserveRemote(idx, name);
+          await render();
+        } catch(err){
+          alert(err.message || 'Rezervace selhala');
+          await render();
+        }
+      }
+
+      async function onCancel(e){
+        const idx = e.currentTarget.getAttribute('data-index');
+        try{
+          await cancelRemote(idx);
+          await render();
+        } catch(err){
+          alert(err.message || 'Zrušení selhalo');
+          await render();
+        }
+      }
+
+      // initial render
+      render();
+    })();
+  </script>
+</body>
+</html>
